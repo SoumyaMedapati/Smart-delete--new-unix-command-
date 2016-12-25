@@ -1,0 +1,512 @@
+#!/bin/bash
+#*************************************************************************************************************
+# Script name: smartdel
+# Author     : Soumya
+# Purpose    : Enables to delete a file and restore it either to its original location or to the home directory
+# Scope      : It is limited to the files in home directory
+#*************************************************************************************************************
+
+# regex to identify recycle bin, table and numerical choices
+recbin='smartdel_recycle'		
+table='.table.txt'				
+number='^[0-9]+$'                               
+
+#store the 2-tuple into the recycle bin table
+store_tuple () {
+	tuple="$1 $2"
+	if ! grep -Fxq "$tuple" ~/$recbin/$table
+	then
+		echo "$tuple" >> ~/$recbin/$table
+	fi
+}
+
+# check if filename is uniquness
+check_unique () {
+	filename=$1_1
+        if [ -f ~/$recbin/$filename ]
+        then
+		
+               	while [ -f ~/$recbin/$filename ]
+               	do
+                       	num="${filename##*_}"
+                       	num=`expr $num + 1`
+                       	num=_$num
+                       	filename="${filename%_*}"
+                       	filename=$filename$num
+               	done
+        fi
+
+	echo "$filename"
+}
+
+
+# extract the filename and filepath from given arguments
+extract_path () {
+	filename="$1"
+        if [[ "$filename" == *"/"* ]]
+        then
+                # get the path and name of the file
+                file_path="${filename%/*}"
+                filename="${filename##*/}"
+        else
+                
+                filename="$filename"
+        fi
+
+       #if input does not begin with / prepend $PWD;
+       if [[ "$file_path" == /* ]]
+       then
+                        file_path=$file_path/
+                        
+       else
+                       file_path=$PWD/
+                        
+       fi
+       
+echo "$file_path"
+}
+
+#main method which moves the deleted file to smartdel_recyclebin and stores the tuple into the table
+delete () {
+	
+	filename="$1"
+       # create recycle bin
+	if [ ! -d ~/$recbin ]
+	then
+		dir=$PWD
+		cd ~
+		mkdir $recbin
+		cd $dir
+	fi
+
+	# create table
+	if [ ! -f ~/$recbin/$table ]
+	then
+		dir=$PWD
+		cd ~/$recbin
+		echo > $table
+		cd $dir
+	fi
+
+	if not_empty $filename
+	then
+	
+                for filename in `find $filename`
+		do
+			# if user tries to delete nonexistant file, display error message and terminate
+			if [ ! -f "$filename" ] && [ ! -d "$filename" ]
+			then
+				echo "smartdel: cannot delete '$filename': no such file exists"
+				return
+			elif [[ -d "$filename" ]]
+			then
+				echo "smartdel: cannot smartdel '$filename': it is a directory"
+				return
+			fi
+
+			# get 2-tuple for table
+			file_path=$(extract_path $filename)
+                       
+			filename2="${filename##*/}"
+                       
+			filename2=$(check_unique "$filename2")
+
+			# move and store in recycle bin table
+			if [ -n "$file_path" ]
+			then
+				mv $filename ~/$recbin/"$filename2"
+                		store_tuple $filename2 $file_path
+                                echo $filename2 $file_path
+                                
+			fi
+
+		done
+	else
+		echo "smartdel: '$filename' does not exist at this directory"
+	fi
+}  
+
+
+# removes a 2-tuple from table when the corresponding file leaves the recycle bin, returns the path
+refresh_table () {
+	# extract the path of the 2-tuple and append it to a search string after filename
+	filename=$1
+	path=$(grep "$1" ~/$recbin/$table | head -1 | cut -f 2 -d ' ')
+        search_str="$filename $path"
+        sed -i "s@^$search_str@@" ~/$recbin/$table
+        sed -i "/^$/d" ~/$recbin/$table
+
+	path=$path/
+	echo "$path"
+}
+
+# displays a list of files when files with same name exist in the smartdel recyclebin
+display_filenames () {
+	array=("${!1}")
+
+	echo "smartdel: multiple files with  name '$filename' exist. Please choose one to restore."
+        option="0"
+        for f in "${array[@]}"
+        do
+                name="${f##*/}"
+                time=$(stat -c%y $f)
+                path=$(grep "$name" ~/$recbin/$table | head -1 | cut -f 2 -d ' ')
+                echo "$option) last edited: $time | name: $name | source dir: $path"
+                let "option=$option+1"
+        done
+}
+
+# move the file from bin to user's current directory or path specified
+move_item () {
+	skip="$2"
+        read choice
+	array=("${!1}")
+        declare -A used
+        if [[ $choice =~ $number ]] && [ "${array[$choice]}" ]
+        then
+        	
+                name="${array[$choice]}"
+                cur_name="${name##*/}"
+                path=$(refresh_table $cur_name)
+                name="${cur_name%_*}"
+
+		if [ ! "$skip" ]
+		then
+                	mv "${array[$choice]}" ./$name
+		else
+			mv "${array[choice]}" $path/$name
+		fi
+        else
+                echo "invalid input"
+                exit
+        fi
+}
+
+# To check if file exists and is a regular file
+not_empty () {
+ [[ -f $1 ]]
+ }
+
+# method which does the restore operation
+restore () {
+	value="$1"
+        
+	skip="$2"
+        
+	declare -A arrayA
+        # code for files with same name 
+	if [[ "$value" == *"*"* ]] || [[ "$value" == *"?"* ]]
+       	then
+		value=$value_*
+                if not_empty ~/$recbin/$value
+                then
+                        for result in `find ~/$recbin/$value`
+                       	do
+                                result="${result##*/}"
+                               
+        			prefix="${result%_*}"
+                               
+        			path=$(grep "$result" ~/$recbin/$table | head -1 | cut -f 2 -d ' ')
+                                if [ ! "$skip"  ] || [ "$skip" == "temp11" ]
+			        then
+			                if [ ! "${arrayA[$prefix]}" ]
+			                then
+			                        arrayA[$prefix]="in use"
+        filename=$prefix
+	if [[ "$filename" == *"*"* ]]; then str=$filename*; else str=$filename_*; fi
+	declare -a array1
+	count="1"
+	spec_path=$path
+
+	# add all file versions to array
+	if not_empty ~/$recbin/$str
+	then
+		for f in `find ~/$recbin/$str`
+		do
+			if [ "$skip" != "temp12" ] || [ "$skip" == "temp11" ]
+			then
+				array1[$count]=$f
+				let "count=$count+1"
+
+			else
+                               	name="${f##*/}"
+                               	path=$(grep "$name" ~/$recbin/$table | head -1 | cut -f 2 -d ' ')
+
+                               	if [ "$path" == "$spec_path" ]
+                               	then
+                                       	array1[$count]=$f
+                                       	let "count=$count+1"
+                               	fi
+			fi
+		done
+	# display error message
+	else
+           	echo "smartdel: file '$filename' not found in recycle bin"
+	fi
+        if [ $count -gt "2" ]
+        then
+        	display_filenames array1[@]
+                move_item array1[@] $skip
+        elif [ $count -eq "2" ]
+        then
+        	# clean bin table
+                name="${array1[1]}"
+                name="${name##*/}"
+                path=$(refresh_table $name)
+                name="${name%_*}"
+
+                
+		if [ "$skip" != "temp12" ] && [ "$skip" != "temp11" ]
+		then
+                       	mv "${array1[1]}" ./$name
+		else
+			mv "${array1[1]}" $path$name
+		fi
+        fi
+			                fi
+			      
+			        else
+			                if [ ! "${arrayA[$path$prefix]}" ]
+			                then
+			                        arrayA[$path$prefix]="combo in use"
+        filename="$prefix"
+	if [[ "$filename" == *"*"* ]]; then str=$filename*; else str=$filename_*; fi
+	declare -a array2
+	declare -A paths2
+	count="1"
+	spec_path=$path
+
+	
+	if not_empty ~/$recbin/$str
+	then
+		for f in `find ~/$recbin/$str`
+		do
+			
+			if [ "$skip" != "temp12" ] || [ "$skip" == "temp11" ]
+			then
+				array2[$count]=$f
+				let "count=$count+1"
+
+			
+			else
+                               	name="${f##*/}"
+                               	path=$(grep "$name" ~/$recbin/$table | head -1 | cut -f 2 -d ' ')
+
+                               	if [ "$path" == "$spec_path" ]
+                               	then
+                                       	array2[$count]=$f
+                                       	let "count=$count+1"
+                               	fi
+			fi
+		done
+	# display error message 
+	else
+           	echo "smartdel: file '$filename' not found in recycle bin"
+	fi
+        if [ $count -gt "2" ]
+        then
+        	display_filenames array2[@]
+                move_item array2[@] $skip
+
+       
+        elif [ $count -eq "2" ]
+        then
+       
+                name="${array2[1]}"
+                name="${name##*/}"
+                path=$(refresh_table $name)
+                name="${name%_*}"
+
+             
+		if [ "$skip" != "temp12" ] && [ "$skip" != "temp11" ]
+		then
+                       	mv "${array2[1]}" ./$name
+		else
+			mv "${array2[1]}" $path$name
+		fi
+        fi
+
+			                fi
+        			fi
+                        done
+             	else
+                        echo "smartdel: cannot restore '$1'. No such file in recycle bin"
+                fi
+
+	#when no wildcard characters are specified
+        else
+		
+		if [ ! "$skip" ] || [ "$skip" == "temp11" ]
+		then
+        filename="$1"
+	if [[ "$filename" == *"*"* ]]; then str=$filename*; else str=$filename_*; fi
+	declare -a array3
+	declare -A paths3
+	count="1"
+	spec_path="$3"
+
+	if not_empty ~/$recbin/$str
+	then
+		for f in `find ~/$recbin/$str`
+		do
+			if [ "$skip" != "temp12" ] || [ "$skip" == "temp11" ]
+			then
+				array3[$count]=$f
+				let "count=$count+1"
+
+			
+			else
+                               	name="${f##*/}"
+                               	path=$(grep "$name" ~/$recbin/$table | head -1 | cut -f 2 -d ' ')
+
+                               	if [ "$path" == "$spec_path" ]
+                               	then
+                                       	array3[$count]=$f
+                                       	let "count=$count+1"
+                               	fi
+			fi
+		done
+
+	else
+           	echo "smartdel: file '$filename' not found in recycle bin"
+	fi
+
+	
+        if [ $count -gt "2" ]
+        then
+        	display_filenames array3[@]
+                move_item array3[@] $skip
+
+       
+        elif [ $count -eq "2" ]
+        then
+        	
+                name="${array3[1]}"
+                name="${name##*/}"
+                path=$(refresh_table $name)
+                name="${name%_*}"
+		if [ "$skip" != "temp12" ] && [ "$skip" != "temp11" ]
+		then
+                       	mv "${array3[1]}" ./$name
+		else
+			mv "${array3[1]}" $path$name
+		fi
+        fi
+
+		elif not_empty ~/$recbin/$value_*
+		then
+			for result in `find ~/$recbin/$value_*`
+			do
+				result="${result##*/}"
+                                prefix="${result%_*}"
+                                path=$(grep "$result" ~/$recbin/$table | head -1 | cut -f 2 -d ' ')
+				if [ ! "${arrayA[$path$prefix]}" ]
+		                then
+                       			arrayA[$path$prefix]="combo in use"
+        filename=$prefix
+	if [[ "$filename" == *"*"* ]]; then str=$filename*; else str=$filename_*; fi
+	declare -a array4
+	declare -A paths4
+	count="1"
+	spec_path=$path
+
+	if not_empty ~/$recbin/$str
+	then
+		for f in `find ~/$recbin/$str`
+		do
+			
+			if [ "$skip" != "temp12" ] || [ "$skip" == "temp11" ]
+			then
+				array4[$count]=$f
+				let "count=$count+1"
+
+			
+			else
+                               	name="${f##*/}"
+                               	path=$(grep "$name" ~/$recbin/$table | head -1 | cut -f 2 -d ' ')
+
+                               	if [ "$path" == "$spec_path" ]
+                               	then
+                                       	array4[$count]=$f
+                                       	let "count=$count+1"
+                               	fi
+			fi
+		done
+	# display error message
+	else
+           	echo "smartdel: file '$filename' not found in recycle bin"
+	fi
+
+
+        if [ $count -gt "2" ]
+        then
+        	display_filenames array4[@]
+                move_item array4[@] $skip
+
+        
+        elif [ $count -eq "2" ]
+        then
+        	
+                name="${array4[1]}"
+                name="${name##*/}"
+                path=$(refresh_table $name)
+                name="${name%_*}"
+
+                
+		if [ "$skip" != "temp12" ] && [ "$skip" != "temp11" ]
+		then
+                       	mv "${array4[1]}" ./$name
+		else
+			mv "${array4[1]}" $path$name
+		fi
+        fi
+               			fi
+			done
+		fi
+        fi
+}
+
+
+# taking the user inputs and calling required functions
+while getopts ":d:r:o:s:c " opt;
+do      
+#echo "testing"
+# clears the smartdel_recycle bin
+	if [ "$opt" == "c" ]; then echo "" > ~/$recbin/$table
+	if not_empty ~/$recbin/*; then rm ~/$recbin/*; fi; exit; fi
+
+	# ensure at lease 1 paramater has been passed in
+	if [ ! -n "$2" ]; then echo "smartdel: paramaters must be specified"; exit; fi
+#echo "outter while"
+        while [ -n "$2" ]  
+	do
+		#echo "inner while"
+		case $opt in
+		        # to delete a file or multiple files
+               		d) delete "$2";; 
+
+			# to restore a file to current working directory
+               		r) restore "$2";; 
+
+			# to restore a file to its original location
+			o) restore "$2" "temp11";;
+                        
+                        # to restore multiple file using wildcard
+			s) restore "$2" "temp12" ;; 
+                        
+			# when no options are specified
+               		\?) echo "smartdel: invalid command"
+			    exit  ;;
+
+       		esac
+		shift
+	done
+	exit
+done
+
+# smartdel with no -d option mentioned
+	while [ -n "$1" ]
+	do
+		delete "$1"
+		shift
+	done
